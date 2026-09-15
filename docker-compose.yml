@@ -1,0 +1,113 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: debezium/postgres:15
+    container_name: banking-postgres
+    environment:
+      POSTGRES_DB: banking
+      POSTGRES_USER: banking_user
+      POSTGRES_PASSWORD: banking_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - pg_data:/var/lib/postgresql/data
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: banking-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: banking-kafka
+    depends_on: [zookeeper]
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+
+  kafka-connect:
+    image: debezium/connect:2.6
+    container_name: banking-kafka-connect
+    depends_on: [kafka, postgres]
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: banking-connect
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+    ports:
+      - "8083:8083"
+
+  minio:
+    image: minio/minio:latest
+    container_name: banking-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  connector-registrar:
+    build:
+      context: .
+      dockerfile: dockerfile-airflow.dockerfile
+    container_name: banking-connector-registrar
+    depends_on: [kafka-connect]
+    command: ["python", "kafka-debezium/generate_and_post_connector.py"]
+    volumes:
+      - ./kafka-debezium:/opt/app/kafka-debezium
+
+  data-generator:
+    build:
+      context: .
+      dockerfile: dockerfile-airflow.dockerfile
+    container_name: banking-data-generator
+    depends_on: [postgres]
+    working_dir: /opt/app/data-generator
+    command: ["python", "faker_generator.py"]
+    volumes:
+      - ./data-generator:/opt/app/data-generator
+
+  kafka-to-minio-consumer:
+    build:
+      context: .
+      dockerfile: dockerfile-airflow.dockerfile
+    container_name: banking-consumer
+    depends_on: [kafka, minio]
+    command: ["python", "consumer/kafka_to_minio.py"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MINIO_ENDPOINT: http://minio:9000
+    volumes:
+      - ./consumer:/opt/app/consumer
+
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: dockerfile-airflow.dockerfile
+    container_name: banking-airflow
+    depends_on: [postgres]
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://banking_user:banking_pass@postgres/banking
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/dags:/opt/airflow/dags
+      - ./banking_dbt:/opt/airflow/banking_dbt
+    command: ["airflow", "standalone"]
+
+volumes:
+  pg_data:
+  minio_data:

@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: bronze
+    database: BANKING_DB
+    schema: bronze
+    tables:
+      - name: customers_raw
+      - name: accounts_raw
+      - name: transactions_raw

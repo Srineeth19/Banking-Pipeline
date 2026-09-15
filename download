@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+.env
+*.log
+
+# dbt
+target/
+dbt_packages/
+logs/
+
+# Airflow
+airflow.db
+airflow.cfg
+logs/
+webserver_config.py
+
+# Docker volumes / local data
+pg_data/
+minio_data/
+
+# IDE
+.vscode/
+.idea/

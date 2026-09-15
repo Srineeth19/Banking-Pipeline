@@ -1,0 +1,15 @@
+# Controls the volume/shape of synthetic data produced by faker_generator.py
+num_customers: 2000
+num_accounts_per_customer_max: 3
+num_transactions: 100000
+batch_size: 1000
+
+postgres:
+  host: postgres
+  port: 5432
+  dbname: banking
+  user: banking_user
+  password: banking_pass
+
+account_types: ["CHECKING", "SAVINGS", "CREDIT"]
+transaction_types: ["DEPOSIT", "WITHDRAWAL", "TRANSFER", "PAYMENT"]
